@@ -1,5 +1,5 @@
 {
-  description = "rust-nix-monorepo-template";
+  description = "Decentralized exchanges indexer";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -33,9 +33,11 @@
           ];
         };
 
+        foundry = pkgs.callPackage ./nix/foundry.nix { };
+
         rustVersion = "1.72.0";
 
-        rust-toolchain = pkgs.rust-bin.stable."${rustVersion}".overrides {
+        rust-toolchain = pkgs.rust-bin.stable."${rustVersion}".default.override {
           extensions = [ "rust-src" "clippy" "rustfmt" ];
         };
 
@@ -61,7 +63,11 @@
         };
 
         devShells.default = pkgs.mkShell {
-          buildInputs = [ rust-toolchain ];
+          buildInputs = [
+            rust-toolchain
+            pkgs.texliveFull
+            foundry
+          ];
         };
       }
     );

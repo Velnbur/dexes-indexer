@@ -1,3 +1,7 @@
+[workspace.metadata]
+license = "Apache-2.0"
+repository = "github.com/Velnbur/dexes-indexer"
+
 [workspace]
 members = [
     "crates/utils",
