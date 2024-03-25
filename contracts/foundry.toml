@@ -1,6 +1,9 @@
 [profile.default]
 src = "src"
 out = "out"
+solc = "0.5.16"
 libs = ["lib"]
+auto_detect_remappings = true
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+

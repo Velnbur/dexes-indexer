@@ -1,22 +1,35 @@
 { system, fetchurl, stdenv, pkgs, lib, ... }:
 let
-  version = "nightly-84d98427e17370ff08ec34f00e3c7e539753a760";
+  version = "nightly-f9da73dff7d089a4a79ba4977419aec06cc10330";
 
-  fetchFromGithubAssets = { author, repo, version, asset, sha256 }: fetchurl {
-    inherit sha256;
-    url = "https://github.com/${author}/${repo}/releases/download/${version}/${asset}";
-  };
+  fetchFromGithubAssets = { author, repo, version, asset, sha256 }:
+    fetchurl {
+      inherit sha256;
+      url =
+        "https://github.com/${author}/${repo}/releases/download/${version}/${asset}";
+    };
 
   matrix = {
-    aarch64-linux = { system = "linux_arm64"; sha256 = ""; };
-    x86_64-linux = { system = "linux_amd64"; sha256 = ""; };
-    aarch64-darwin = { system = "darwin_arm64"; sha256 = "sha256-/azNItOL0cGJgYZhWKoaMmkQ38JRbFWdyaXjA4W3TNY="; };
-    x86_64-darwin = { system = "darwin_amd64"; sha256 = ""; };
+    aarch64-linux = {
+      system = "linux_arm64";
+      sha256 = "";
+    };
+    x86_64-linux = {
+      system = "linux_amd64";
+      sha256 = "";
+    };
+    aarch64-darwin = {
+      system = "darwin_arm64";
+      sha256 = "sha256-XI69TRTJcgwq2gQWzKeOcwXj1o4eaZx2R6YdX0fq714=";
+    };
+    x86_64-darwin = {
+      system = "darwin_amd64";
+      sha256 = "";
+    };
   };
 
   pair = matrix.${system};
-in
-stdenv.mkDerivation rec {
+in stdenv.mkDerivation rec {
   inherit version;
   name = "foundry-${version}";
   pname = "foundry";
@@ -31,11 +44,9 @@ stdenv.mkDerivation rec {
 
   phases = [ "installPhase" ];
 
-  # buildInputs = [ pkgs.tar ];
-
   installPhase = ''
     mkdir -p $out/bin
-  
+
     tar -xzf $src -C $out/bin
 
     chmod +x $out/bin/*
