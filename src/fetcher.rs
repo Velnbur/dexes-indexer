@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use bindings::{
     i_uniswap_v2erc20::IUniswapV2ERC20, uniswap_v2_factory::UniswapV2Factory,
@@ -11,7 +11,6 @@ use ethers::{
     types::{Block, H160, H256},
 };
 use sqlx::PgConnection;
-use tokio::time::sleep;
 
 /// `Fetcher` fetches from chain data about pairs, tokens and reserves.
 pub struct Fetcher {
@@ -106,7 +105,6 @@ impl Fetcher {
                 .await?;
 
             txn.commit().await?;
-            sleep(Duration::from_millis(500)).await;
             tracing::info!("Inserted pair");
         }
 
@@ -179,6 +177,9 @@ impl Fetcher {
         conn: &mut PgConnection,
         address: H160,
     ) -> eyre::Result<i32> {
+        let span = tracing::info_span!("fetching_token", ?address);
+        let _guard = span.enter();
+
         let token_exists = sqlx::query!(
             "SELECT id FROM tokens WHERE address = $1",
             address.to_string()
@@ -199,9 +200,20 @@ impl Fetcher {
         let decimals_call = token_contract.decimals();
         let (name, symbol, decimals) =
             futures::join!(name_call.call(), symbol_call.call(), decimals_call.call(),);
-        let name = name.unwrap_or("unknown".to_string());
-        let symbol = symbol.unwrap_or("unknown".to_string());
-        let decimals = decimals.unwrap_or(18);
+        let name = name.unwrap_or_else(|err| {
+            tracing::warn!("Failed to fetch token name: {:?}", err);
+            "unknown".to_string()
+        }).replace("\0\0", "");
+        let symbol = symbol.unwrap_or_else(|err| {
+            tracing::warn!("Failed to fetch token symbol: {:?}", err);
+            "unknown".to_string()
+        });
+        let decimals = decimals.unwrap_or_else (|err| {
+            tracing::warn!("Failed to fetch token decimals: {:?}", err);
+            18
+        });
+
+        tracing::debug!(?name, ?symbol, ?decimals, "Fetched token info");
 
         let token_id = sqlx::query!(
             r#"
