@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "apps/boostrapper",
+    "apps/bootstrapper",
     "crates/bindings",
     "crates/config",
     "crates/database",

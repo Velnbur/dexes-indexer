@@ -48,7 +48,7 @@
           packageFun = import ./Cargo.nix;
         };
 
-        cli = (rustPkgs.workspace.cli { });
+        bootstrapper = (rustPkgs.workspace.bootstrapper { });
 
         darwinPkgs = (lib.optional stdenv.isDarwin (with pkgs; [
           libiconv
@@ -71,13 +71,13 @@
           ]);
       in rec {
         packages = {
-          inherit cli;
+          inherit bootstrapper;
           default = packages.cli;
         };
 
         apps = {
-          cli = flake-utils.lib.mkApp { drv = packages.cli; };
-          default = apps.cli;
+          bootstrapper = flake-utils.lib.mkApp { drv = packages.bootstrapper; };
+          default = apps.bootstrapper;
         };
 
         devShells.default = pkgs.mkShell {
