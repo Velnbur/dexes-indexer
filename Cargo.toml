@@ -1,33 +1,36 @@
-[package]
-name = "dexes-indexer"
-version = "0.1.0"
-edition = "2021"
-
 [workspace]
 members = [
-        "./crates/bindings",
+    "apps/boostrapper",
+    "crates/bindings",
+    "crates/config",
+    "crates/database",
 ]
+resolver = "2"
 
-[dependencies]
+[workspace.dependencies]
 ethers = "2.0.13"
 serde = "1.0.196"
 toml = "0.8.10"
 color-eyre = "0.6.2"
+eyre = "0.6.12"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
-bindings = { path = "./crates/bindings" }
 futures = "0.3.30"
 
-[dependencies.clap]
+bindings.path = "crates/bindings"
+config.path = "crates/config"
+database.path = "crates/database"
+
+[workspace.dependencies.clap]
 version = "4.5.3"
 features = [ "derive" ]
 
-[dependencies.tokio]
+[workspace.dependencies.tokio]
 version = "1.36.0"
 default-features = false
 features = ["macros", "rt", "rt-multi-thread"]
 
-[dependencies.sqlx]
+[workspace.dependencies.sqlx]
 version = "0.7.4"
 default-features = false
 features = [ "runtime-tokio", "bigdecimal", "postgres", "chrono", "macros" ]

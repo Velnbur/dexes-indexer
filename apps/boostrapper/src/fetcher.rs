@@ -64,6 +64,12 @@ impl Fetcher {
             .await?
             .as_u64();
 
+        tracing::info!(
+            "Last indexed pair: {}, pairs length: {}",
+            last_indexed_pair,
+            pairs_length
+        );
+
         for pair_num in (last_indexed_pair as u64)..pairs_length {
             let span = tracing::info_span!("fetching_pair", ?pair_num);
             let _guard = span.enter();

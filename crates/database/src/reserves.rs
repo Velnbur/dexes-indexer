@@ -1,6 +1,6 @@
-use sqlx::types::BigDecimal;
+use sqlx::{types::BigDecimal, FromRow};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, FromRow)]
 pub struct ReserveEntry {
     pub id: i32,
 

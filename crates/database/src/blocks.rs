@@ -1,4 +1,6 @@
-#[derive(Debug, Clone)]
+use sqlx::FromRow;
+
+#[derive(Debug, Clone, FromRow)]
 pub struct BlockEntry {
     /// Id of the block inside database
     pub id: i32,

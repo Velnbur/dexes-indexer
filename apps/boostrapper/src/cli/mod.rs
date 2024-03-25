@@ -5,7 +5,7 @@ use color_eyre::eyre::{self, Context};
 use ethers::abi::Address;
 use tracing::level_filters::LevelFilter;
 
-use crate::config::Config;
+use config::Config;
 
 mod actions;
 
@@ -45,11 +45,8 @@ impl Cli {
             .init();
 
         match self.command {
-            Commands::Run => {
-                unimplemented!()
-            }
-            Commands::Bootstrap(BootstrapArgs { factory_address }) => {
-                actions::bootstrap::run(config, factory_address).await?;
+            Commands::Run(args) => {
+                actions::run::run(config, args.factory_address).await?;
             }
         }
 
@@ -60,18 +57,12 @@ impl Cli {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Run the full node.
-    Run,
-
-    /// Bootstrap the local database with the latest data from the Ethereum
-    /// node.
-    Bootstrap(BootstrapArgs),
+    Run(RunArgs),
 }
 
 #[derive(Args, Debug)]
-pub struct RunArgs {}
-
-#[derive(Args, Debug)]
-pub struct BootstrapArgs {
+pub struct RunArgs {
+    /// The address of the factory contract.
     #[arg(short, long)]
     pub factory_address: Address,
 }

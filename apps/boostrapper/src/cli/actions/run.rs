@@ -1,7 +1,8 @@
 use color_eyre::eyre;
 use ethers::types::Address;
 
-use crate::{fetcher::{Fetcher, FetcherConfig}, config::Config};
+use crate::fetcher::{Fetcher, FetcherConfig};
+use config::Config;
 
 pub async fn run(config: Config, factory_address: Address) -> eyre::Result<()> {
     let fetcher = Fetcher::try_from_config(FetcherConfig {

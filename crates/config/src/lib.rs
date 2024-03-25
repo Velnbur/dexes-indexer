@@ -1,14 +1,12 @@
-use std::{io::Read, path::PathBuf};
+use std::{io::Read, path::PathBuf, str::FromStr};
 
-use color_eyre::eyre::{self, Context};
+use eyre::{self, Context};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub ethereum: EthereumNode,
-
     pub database: Database,
-
     pub logger: Logger,
 }
 
@@ -28,6 +26,16 @@ pub struct Logger {
     pub path: Option<String>,
 }
 
+impl FromStr for Config {
+    type Err = eyre::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let config = toml::from_str(s)?;
+
+        Ok(config)
+    }
+}
+
 impl Config {
     pub fn load(path: impl Into<PathBuf>) -> eyre::Result<Self> {
         let path = path.into();
@@ -38,7 +46,7 @@ impl Config {
         file.read_to_string(&mut buff)
             .wrap_err("Failed to read file")?;
 
-        let config = toml::from_str(&buff)?;
+        let config = Self::from_str(&buff)?;
 
         Ok(config)
     }

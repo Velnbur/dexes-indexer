@@ -3,10 +3,8 @@ use color_eyre::eyre;
 
 use crate::cli::Cli;
 
+mod fetcher;
 mod cli;
-mod config;
-mod database;
-pub mod fetcher;
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
