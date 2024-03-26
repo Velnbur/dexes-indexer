@@ -12,9 +12,10 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 futures.workspace = true
 sqlx.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = [ "signal" ] }
 tokio-util = { workspace = true, features = [ "rt" ] }
 ethers.workspace = true
+flume.workspace = true
 
 database.workspace = true
 bindings.workspace = true

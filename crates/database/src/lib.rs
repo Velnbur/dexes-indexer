@@ -88,7 +88,9 @@ impl DB {
             r#"
             INSERT INTO factories (address)
             VALUES ($1)
-            ON CONFLICT (address) DO NOTHING
+            ON CONFLICT (address)
+            DO UPDATE
+                SET address = EXCLUDED.address
             RETURNING id
             "#,
             factory.to_string(),

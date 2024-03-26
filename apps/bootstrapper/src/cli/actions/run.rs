@@ -1,18 +1,35 @@
 use color_eyre::eyre;
 use ethers::types::Address;
+use tokio_util::sync::CancellationToken;
 
-use crate::fetcher::{Fetcher, FetcherConfig};
+use crate::fetcher::{IndexerConfig, IndexerPool};
 use config::Config;
 
-pub async fn run(config: Config, factory_address: Address) -> eyre::Result<()> {
-    let fetcher = Fetcher::try_from_config(FetcherConfig {
-        db_url: config.database.url,
-        eth_url: config.ethereum.url,
-        factory_address,
-    })
+pub async fn run(
+    config: Config,
+    factory_address: Address,
+) -> eyre::Result<()> {
+    let ctrl_c = tokio::signal::ctrl_c();
+    let cancellation = CancellationToken::new();
+
+    let indexer = IndexerPool::try_from_config(
+        IndexerConfig {
+            db_url: config.database.url,
+            eth_url: config.ethereum.url,
+            factory_address,
+            // TODO: make this configurable
+            concurrency: 2,
+        },
+        cancellation.clone(),
+    )
     .await?;
 
-    fetcher.run().await?;
+    tokio::select! {
+        _ = ctrl_c => cancellation.cancel(),
+        res = indexer.run() => {
+            res?;
+        }
+    }
 
     Ok(())
 }

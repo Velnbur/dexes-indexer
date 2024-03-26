@@ -1,4 +1,4 @@
-use std::{cmp::min, sync::Arc};
+use std::sync::Arc;
 
 use bindings::{
     i_uniswap_v2erc20::IUniswapV2ERC20, uniswap_v2_factory::UniswapV2Factory,
@@ -13,38 +13,76 @@ use ethers::{
     types::H160,
 };
 use futures::future;
-use tokio_util::task::TaskTracker;
+use tokio::select;
+use tokio_util::{task::TaskTracker, sync::CancellationToken};
 use tracing::instrument;
 
-/// `Fetcher` fetches from chain data about pairs, tokens and reserves.
-#[derive(Clone)]
-pub struct Fetcher {
+/// Indexer fetches from chain data about pairs, tokens and reserves.
+pub struct IndexerPool {
+    /// Database connector to store indexing results
     database: DB,
+
+    /// Client to interact with the Ethereum network
     eth_client: Arc<Provider<Http>>,
+
+    /// The factory contract provider
     factory_contract: UniswapV2Factory<Provider<Http>>,
+
+    /// Cancellation token to stop the indexer
+    cancellation: CancellationToken,
+
+    /// Task tracker of the workers
+    tracker: TaskTracker,
+
+    /// Sender of the pair nums to the workers
+    tx: flume::Sender<Task>,
 }
 
-pub struct FetcherConfig {
+pub struct IndexerConfig {
     pub db_url: String,
     pub eth_url: String,
     pub factory_address: Address,
+
+    /// Number of concurrent workers to process pairs.
+    pub concurrency: usize,
 }
 
-impl Fetcher {
-    pub async fn try_from_config(config: FetcherConfig) -> eyre::Result<Self> {
+impl IndexerPool {
+    pub async fn try_from_config(config: IndexerConfig, cancellation: CancellationToken) -> eyre::Result<Self> {
         let database = DB::from_url(&config.db_url).await?;
         let eth_client = Arc::new(Provider::<Http>::try_from(config.eth_url.as_str())?);
 
-        Ok(Self::new(database, eth_client, config.factory_address))
+        Ok(Self::new(database, eth_client, config, cancellation))
     }
 
-    pub fn new(database: DB, eth_client: Arc<Provider<Http>>, factory_address: Address) -> Self {
-        let factory_contract = UniswapV2Factory::new(factory_address, eth_client.clone());
+    pub fn new(database: DB, eth_client: Arc<Provider<Http>>, config: IndexerConfig, cancellation: CancellationToken) -> Self {
+        let factory_contract = UniswapV2Factory::new(config.factory_address, eth_client.clone());
+        let (tx, rx) = flume::bounded(config.concurrency);
+        let tracker = TaskTracker::new();
+
+        for _i in 0..config.concurrency {
+            let worker = Worker::new(
+                database.clone(),
+                eth_client.clone(),
+                factory_contract.clone(),
+                cancellation.child_token(),
+                rx.clone(),
+            );
+            tracker.spawn(async move {
+                if let Err(err) = worker.run().await {
+                    tracing::error!(?err, "Worker failed");
+                }
+            });
+        }
+        tracker.close();
 
         Self {
             database,
             eth_client,
             factory_contract,
+            cancellation,
+            tracker,
+            tx,
         }
     }
 
@@ -73,31 +111,28 @@ impl Fetcher {
             pairs_length
         );
 
-        const STEP: usize = 2;
-        for pair_num in ((last_indexed_pair + 1)..pairs_length).step_by(STEP) {
-            let tracker = TaskTracker::new();
-
-            for pair in pair_num..min(pair_num + STEP as u64, pairs_length) {
-                let fetcher = Worker::new(
-                    self.database.clone(),
-                    self.eth_client.clone(),
-                    self.factory_contract.clone(),
-                );
-
-                tracker.spawn(async move {
-                    // TODO: Instead of skipping the pair, we MUST retry it later
-                    if let Err(err) = fetcher.process_pair(factory_id, block_id, pair).await {
-                        tracing::error!("Failed to process pair: {:?}", err);
-                    }
-                });
+        for pair_num in (last_indexed_pair + 1)..pairs_length {
+            select! {
+                _ = self.cancellation.cancelled() => break,
+                _ = self.tx.send_async(Task {
+                    factory_id,
+                    block_id,
+                    pair_num,
+                }) => {}
             }
-
-            tracker.close();
-            tracker.wait().await;
         }
+
+        self.tracker.wait().await;
 
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Task {
+    pub factory_id: i32,
+    pub block_id: i32,
+    pub pair_num: u64,
 }
 
 /// Worker is responsible for processing a pair and inserting the data into the
@@ -108,6 +143,8 @@ pub(crate) struct Worker {
     db: DB,
     eth_client: Arc<Provider<Http>>,
     factory_contract: UniswapV2Factory<Provider<Http>>,
+    cancellation: CancellationToken,
+    rx: flume::Receiver<Task>,
 }
 
 impl Worker {
@@ -115,20 +152,50 @@ impl Worker {
         db: DB,
         eth_client: Arc<Provider<Http>>,
         factory_contract: UniswapV2Factory<Provider<Http>>,
+        cancellation: CancellationToken,
+        rx: flume::Receiver<Task>,
     ) -> Self {
         Self {
             db,
             eth_client,
             factory_contract,
+            cancellation,
+            rx,
         }
     }
 
-    #[instrument(skip(self, block_id))]
-    pub(crate) async fn process_pair(
+    #[instrument(skip(self), name = "Worker")]
+    pub(crate) async fn run(&self) -> eyre::Result<()> {
+        const RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
+        const RETRIES: usize = 3;
+
+        loop {
+            let task = select! {
+                msg = self.rx.recv_async() => msg? ,
+                _ = self.cancellation.cancelled() => break,
+            };
+
+            for _ in 0..RETRIES {
+                if let Err(err) = self.process_pair(task).await {
+                    tracing::warn!("Failed to process pair: {:?}", err);
+                    tokio::time::sleep(RETRY_DELAY).await;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn process_pair(
         &self,
-        factory_id: i32,
-        block_id: i32,
-        pair_num: u64,
+        Task {
+            factory_id,
+            block_id,
+            pair_num,
+        }: Task,
     ) -> eyre::Result<()> {
         let pair_address = self
             .factory_contract
