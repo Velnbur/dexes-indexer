@@ -149,7 +149,9 @@ impl DB {
             INSERT INTO
                 tokens (address, name, symbol, decimals)
             VALUES ($1, $2, $3, $4)
-            ON CONFLICT (address) DO NOTHING
+            ON CONFLICT (address)
+            DO UPDATE
+                SET address = EXCLUDED.address
             RETURNING id
             "#,
             address.to_string(),

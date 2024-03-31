@@ -53,7 +53,10 @@
         darwinPkgs = (lib.optional stdenv.isDarwin (with pkgs; [
           libiconv
           darwin.apple_sdk.frameworks.SystemConfiguration
+          colima
         ]));
+
+        linuxPkgs = (lib.optional stdenv.isLinux (with pkgs; [ docker ]));
 
         pythonWithPackages = pkgs.python311.withPackages (ps:
           with ps; [
@@ -69,10 +72,24 @@
             graphviz
             psycopg2
           ]);
+
+        devComposeFilePath = ./infrastructure/dev/docker-compose.yaml;
       in rec {
         packages = {
           inherit bootstrapper;
           default = packages.cli;
+
+          setup-compose = pkgs.writeShellScriptBin "setup-compose" ''
+            if ! colima status &> 2; then
+                colima start
+            fi
+
+            docker compose --file ${devComposeFilePath} --project-directory . up -d
+          '';
+
+          enter-db = pkgs.writeShellScriptBin "enter-db" ''
+            docker compose --file ${devComposeFilePath} --project-directory . exec db psql -U dex dex
+          '';
         };
 
         apps = {
@@ -87,6 +104,7 @@
             foundry
             nodePackages.pyright
             graphviz
+            docker-client
           ]) ++ [ rust-toolchain pythonWithPackages ] ++ darwinPkgs;
 
           venvDir = "./.venv";

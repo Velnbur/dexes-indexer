@@ -8,6 +8,7 @@ use config::Config;
 pub async fn run(
     config: Config,
     factory_address: Address,
+    workers: usize,
 ) -> eyre::Result<()> {
     let ctrl_c = tokio::signal::ctrl_c();
     let cancellation = CancellationToken::new();
@@ -18,7 +19,7 @@ pub async fn run(
             eth_url: config.ethereum.url,
             factory_address,
             // TODO: make this configurable
-            concurrency: 2,
+            concurrency: workers,
         },
         cancellation.clone(),
     )

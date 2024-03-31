@@ -1,11 +1,12 @@
 from typing import Dict, List, Tuple
 import graphviz
 import tomllib as tl
+import csv
 import psycopg2 as psql
 
 config = None
 
-with open("config.dev.toml") as f:
+with open("infrastructure/dev/configs/config.dev.toml") as f:
     content = f.read()
     config = tl.loads(content)
 
@@ -34,23 +35,28 @@ with psql.connect(config["database"]["url"]) as conn:
 
                 tokens[id] = symbol
 
-dot = graphviz.Graph(engine="sfdp")
+# dot = graphviz.Graph(engine="sfdp")
 
-for token0, token1 in pairs:
-    symbol0 = tokens[token0]
-    symbol1 = tokens[token1]
+with open("assets/graph.csv", "w") as f:
+    writer = csv.writer(f)
 
-    dot.node(symbol0)
-    dot.node(symbol1)
-    dot.edge(symbol0, symbol1)
+    for token0, token1 in pairs:
+        symbol0 = tokens[token0]
+        symbol1 = tokens[token1]
 
-dot.render(
-    "assets/graph",
-    format="dot",
-    cleanup=True,
-)
+        writer.writerow([symbol0, symbol1])
+
+
+#     dot.node(symbol0)
+#     dot.node(symbol1)
+#     dot.edge(symbol0, symbol1)
+
+# dot.render(
+#     "assets/graph",
+#     format="dot",
+#     cleanup=True,
+# )
 
 # then call:
 #
 # sfdp -x -Goverlap=scale -Tpng ./assets/graph.dot > ./assets/data.png
-#

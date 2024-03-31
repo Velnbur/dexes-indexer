@@ -46,7 +46,7 @@ impl Cli {
 
         match self.command {
             Commands::Run(args) => {
-                actions::run::run(config, args.factory_address).await?;
+                actions::run::run(config, args.factory_address, args.workers as usize).await?;
             }
         }
 
@@ -65,4 +65,8 @@ pub struct RunArgs {
     /// The address of the factory contract.
     #[arg(short, long)]
     pub factory_address: Address,
+
+    /// The number of workers to spawn.
+    #[arg(short, long, default_value = "1")]
+    pub workers: u32,
 }
