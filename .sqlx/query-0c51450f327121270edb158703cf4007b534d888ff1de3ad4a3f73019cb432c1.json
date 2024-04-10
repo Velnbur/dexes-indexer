@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO factories (address)\n            VALUES ($1)\n            ON CONFLICT (address)\n            DO UPDATE\n                SET address = EXCLUDED.address\n            RETURNING id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bpchar"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0c51450f327121270edb158703cf4007b534d888ff1de3ad4a3f73019cb432c1"
+}

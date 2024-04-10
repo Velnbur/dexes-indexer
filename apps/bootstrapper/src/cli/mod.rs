@@ -1,11 +1,12 @@
 use std::{path::PathBuf, str::FromStr};
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use color_eyre::eyre::{self, Context};
-use ethers::abi::Address;
 use tracing::level_filters::LevelFilter;
 
 use config::Config;
+
+use self::actions::run::RunArgs;
 
 mod actions;
 
@@ -46,7 +47,7 @@ impl Cli {
 
         match self.command {
             Commands::Run(args) => {
-                actions::run::run(config, args.factory_address, args.workers as usize).await?;
+                actions::run::run(config, args).await?;
             }
         }
 
@@ -58,15 +59,4 @@ impl Cli {
 pub enum Commands {
     /// Run the full node.
     Run(RunArgs),
-}
-
-#[derive(Args, Debug)]
-pub struct RunArgs {
-    /// The address of the factory contract.
-    #[arg(short, long)]
-    pub factory_address: Address,
-
-    /// The number of workers to spawn.
-    #[arg(short, long, default_value = "1")]
-    pub workers: u32,
 }

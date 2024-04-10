@@ -5,14 +5,8 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    pub ethereum: EthereumNode,
     pub database: Database,
     pub logger: Logger,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct EthereumNode {
-    pub url: String,
 }
 
 #[derive(Debug, Deserialize)]
