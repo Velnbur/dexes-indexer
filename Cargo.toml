@@ -1,11 +1,16 @@
 [workspace]
 members = [
     "apps/bootstrapper",
+    "apps/pathfinder",
     "crates/bindings",
     "crates/config",
     "crates/database",
 ]
 resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
 
 [workspace.dependencies]
 ethers = "2.0.13"

@@ -7,3 +7,4 @@ edition = "2021"
 sqlx.workspace = true
 eyre.workspace = true
 ethers.workspace = true
+futures.workspace = true

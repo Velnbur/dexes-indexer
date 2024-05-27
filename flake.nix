@@ -2,95 +2,143 @@
   description = "Decentralized exchanges indexer";
 
   inputs = {
-    flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
-    flake-parts.url = "github:hercules-ci/flake-parts";
-
-    nixpkgs.url = "github:NixOS/nixpkgs/23.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    crate2nix = {
-      url = "github:nix-community/crate2nix";
+    flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
+
+    crane = {
+      url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    process-compose-flake.url = "github:Platonic-Systems/process-compose-flake";
-    services-flake.url = "github:juspay/services-flake";
+    flake-utils.url = "github:numtide/flake-utils";
   };
 
-  # nixConfig = {
-  #   extra-trusted-public-keys =
-  #     "eigenvalue.cachix.org-1:ykerQDDa55PGxU25CETy9wF6uVDpadGGXYrFNJA3TUs=";
-  #   extra-substituters = "https://eigenvalue.cachix.org";
-  #   allow-import-from-derivation = true;
-  # };
+  outputs = { self, flake-utils, nixpkgs, rust-overlay, crane, ... }:
+    let
+      systems =
+        [ "x86_64-linux" "x86_64-darwin" "aarch64-linux" "aarch64-darwin" ];
+    in flake-utils.lib.eachSystem systems (system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ rust-overlay.overlays.default ];
+        };
 
-  outputs = inputs@{ flake-parts, nixpkgs, ... }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = [ "aarch64-darwin" ];
+        inherit (pkgs) lib stdenv;
 
-      imports = [
-        inputs.process-compose-flake.flakeModule
-        ./nix/rust-overlay/flake-module.nix
-      ];
+        foundry = pkgs.callPackage ./nix/foundry.nix { };
 
-      perSystem = { self', config, pkgs, system, ... }:
-        let
-          customBuildRustCrateForPkgs = pkgs:
-            pkgs.buildRustCrate.override {
-              defaultCrateOverrides = pkgs.defaultCrateOverrides // {
-                scale-info = attrs: { CARGO = 1; };
-              };
-            };
-
-          cargoNix = pkgs.callPackage ./Cargo.nix {
-            buildRustCrateForPkgs = customBuildRustCrateForPkgs;
+        rust-toolchain = (pkgs.rust-bin.fromRustupToolchainFile
+          ./rust-toolchain.toml).override {
+            extensions =
+              [ "rustfmt" "clippy" "rust-analyzer" "rust-src" "cargo" ];
           };
 
-          dev-db = import ./nix/dev-db.nix { };
+        craneLib = (crane.mkLib pkgs).overrideToolchain rust-toolchain;
 
-          postgresPkg = pkgs.postgresql;
-        in {
-          process-compose."default" = {
-            imports = [ inputs.services-flake.processComposeModules.default ];
+        sqlFilter = path: _type: null != builtins.match ".*sql$" path;
+        jsonFilter = path: _type: null != builtins.match ".*json$" path;
+        sqlOrCargoOrJson = path: type:
+          (sqlFilter path type) || (craneLib.filterCargoSources path type)
+          || (jsonFilter path type);
 
-            services.postgres."dex-pg" = dev-db.nixos postgresPkg;
-          };
+        src = lib.cleanSourceWith {
+          src = craneLib.path ./.; # The original, unfiltered source
+          filter = sqlOrCargoOrJson;
+        };
 
-          packages = rec {
-            bootstrapper = cargoNix.workspaceMembers.bootstrapper.build;
-            default = bootstrapper;
-          };
+        commonArgs = {
+          inherit src;
+          pname = "dex";
+          strictDeps = true;
 
-          apps = rec {
-            bootstrapper = {
-              type = "app";
-              program = "${self'.packages.bootstrapper}/bin/bootstrapper";
-            };
-            default = pkgs.writeScriptBin "dex" ''
-              echo "Running dex..."
-            '';
-          };
-
-          devShells.default = pkgs.mkShell {
-            buildInputs = [ postgresPkg ] ++ (with pkgs; [ rust-toolchain ]);
-            DATABASE_URL = dev-db.url;
-          };
-
-          devShells.paper =
-            pkgs.mkShell { buildInputs = (with pkgs; [ texliveFull ]); };
-
-          devShells.python = pkgs.mkShell {
-            buildInputs = (with pkgs; [
-              (callPackage ./nix/python.nix { })
-              nodePackages.pyright
-              graphviz
+          buildInputs = [ pkgs.pkg-config ]
+            ++ pkgs.lib.optionals pkgs.stdenv.isDarwin (with pkgs; [
+              libiconv
+              darwin.apple_sdk.frameworks.SystemConfiguration
+              darwin.apple_sdk.frameworks.Security
             ]);
-            venvDir = "./.venv";
+
+          nativeBuildInputs = [ pkgs.sqlx-cli ];
+
+          SQLX_OFFLINE = "1";
+        };
+
+        cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+        bootstrapper = craneLib.buildPackage commonArgs // {
+          pname = "bootstrapper";
+          inherit cargoArtifacts;
+
+          doCheck = false;
+        };
+
+        pythonWithPackages = pkgs.python311.withPackages (ps:
+          with ps; [
+            # tools
+            python
+            pip
+            setuptools
+            wheel
+            virtualenv
+            venvShellHook
+            black
+            # libraries
+            graphviz
+            psycopg2
+          ]);
+
+        devComposeFilePath = ./infrastructure/dev/docker-compose.yaml;
+      in rec {
+        checks = { inherit bootstrapper; };
+
+        packages = {
+          inherit bootstrapper;
+          default = packages.bootstrapper;
+
+          setup-compose = pkgs.writeShellScriptBin "setup-compose" ''
+            if ! colima status &> 2; then
+                colima start
+            fi
+
+            docker compose --file ${devComposeFilePath} --project-directory . up -d
+          '';
+
+          enter-db = pkgs.writeShellScriptBin "enter-db" ''
+            docker compose --file ${devComposeFilePath} --project-directory . exec db psql -U dex dex
+          '';
+        };
+
+        apps = {
+          bootstrapper = flake-utils.lib.mkApp { drv = packages.bootstrapper; };
+          default = apps.bootstrapper;
+        };
+
+        devShells.default = craneLib.devShell {
+          checks = self.checks.${system};
+
+          packages = (with pkgs; [
+            sqlx-cli
+            texliveFull
+            foundry
+            nodePackages.pyright
+            graphviz
+            docker-client
+          ]) ++ [ rust-toolchain pythonWithPackages ];
+
+          venvDir = "./.venv";
+          ETH_RPC_URL = "127.0.0.1:8545";
+          DATABASE_URL = "postgresql://dex:admin123@127.0.0.1:5432/dex";
+
+          FONTCONFIG_FILE = pkgs.makeFontsConf {
+            fontDirectories = [ pkgs.times-newer-roman ];
           };
         };
-    };
+      });
 }

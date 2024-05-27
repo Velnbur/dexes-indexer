@@ -1,17 +1,21 @@
-use std::env;
+use std::{env, pin::Pin};
 
 use ethers::{
     abi::Hash,
     types::{Address, Block},
 };
 use eyre::Context;
-use sqlx::PgConnection;
+use futures::Stream;
+use pairs::PairEntry;
+use sqlx::{PgConnection, FromRow, types::BigDecimal};
 
 pub mod blocks;
 pub mod factories;
 pub mod pairs;
 pub mod reserves;
 pub mod tokens;
+
+pub type AsyncStream<'a, T> = Pin<Box<dyn Stream<Item = Result<T, sqlx::Error>> + Send + 'a>>;
 
 #[derive(Clone)]
 pub struct DB {
@@ -221,4 +225,129 @@ impl DB {
 
         Ok(reserve_record.id)
     }
+
+    pub async fn first_factory_id(
+        conn: &mut PgConnection,
+    ) -> eyre::Result<i32> {
+        let factory_record = sqlx::query!(
+            r#"
+            SELECT id
+            FROM factories
+            ORDER BY id
+            LIMIT 1
+            "#,
+        )
+        .fetch_one(&mut *conn)
+        .await?;
+
+        Ok(factory_record.id)
+    }
+
+    pub async fn pairs_stream<'a>(
+        conn: &'a mut PgConnection,
+    ) -> eyre::Result<AsyncStream<'a, PairsStreamEntry>> {
+        let factory_id = Self::first_factory_id(conn).await?;
+
+        let stream = sqlx::query_as!(
+            PairsStreamEntry,
+            r#"--sql
+            SELECT
+                pairs.id as pair_id,
+                tokens0.id as token0_id,
+                tokens0.address as token0_short_address,
+                tokens1.id as token1_id,
+                tokens1.address as token1_short_address,
+                reserves.reserve0 as reserve0,
+                reserves.reserve1 as reserve1
+            FROM pairs
+            JOIN tokens as tokens0 ON pairs.token0 = tokens0.id
+            JOIN tokens as tokens1 ON pairs.token1 = tokens1.id
+            JOIN reserves ON pairs.id = reserves.pair AND reserves.block = (
+                SELECT blocks.id
+                FROM blocks
+                ORDER BY blocks.id DESC
+                LIMIT 1
+            )
+            WHERE factory = $1
+            "#,
+            factory_id,
+        )
+        .fetch(conn);
+
+        Ok(stream)
+    }
+
+    pub async fn pair_by_address(
+        conn: &mut PgConnection,
+        address: Address
+    ) -> eyre::Result<Option<PairEntry>> {
+        let pair = sqlx::query_as!(
+            PairEntry,
+            r#"
+            SELECT *
+            FROM pairs
+            WHERE address = $1
+            "#,
+            address.to_string(),
+        )
+        .fetch_optional(conn)
+        .await?;
+
+        Ok(pair)
+    }
+
+    pub async fn token_by_address(
+        conn: &mut PgConnection,
+        address: Address
+    ) -> eyre::Result<Option<tokens::TokenEntry>> {
+        let token = sqlx::query_as!(
+            tokens::TokenEntry,
+            r#"
+            SELECT *
+            FROM tokens
+            WHERE address = $1
+            "#,
+            address.to_string(),
+        )
+        .fetch_optional(conn)
+        .await?;
+
+        Ok(token)
+    }
+
+    pub async fn token_by_id(
+        conn: &mut PgConnection,
+        id: i32
+    ) -> eyre::Result<Option<tokens::TokenEntry>> {
+        let token = sqlx::query_as!(
+            tokens::TokenEntry,
+            r#"
+            SELECT *
+            FROM tokens
+            WHERE id = $1
+            "#,
+            id,
+        )
+        .fetch_optional(conn)
+        .await?;
+
+        Ok(token)
+    }
+}
+
+#[derive(Debug, FromRow)]
+pub struct PairsStreamEntry {
+    /// Unique identifier of the pair inside the database.
+    pub pair_id: i32,
+
+    pub token0_id: i32,
+    pub token0_short_address: String,
+    pub token1_id: i32,
+    pub token1_short_address: String,
+
+    /// Amount of token0 in the pair.
+    pub reserve0: BigDecimal,
+
+    /// Amount of token1 in the pair.
+    pub reserve1: BigDecimal,
 }

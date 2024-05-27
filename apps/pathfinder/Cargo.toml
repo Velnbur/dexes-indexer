@@ -1,0 +1,16 @@
+[package]
+name = "pathfinder"
+version.workspace = true
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+petgraph = "0.6.4"
+database.workspace = true
+tokio.workspace = true
+clap.workspace = true
+ethers.workspace = true
+color-eyre.workspace = true
+config.workspace = true
+sqlx.workspace = true

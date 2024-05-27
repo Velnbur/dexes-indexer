@@ -13,6 +13,7 @@ use ethers::{
     types::H160,
 };
 use futures::future;
+use sqlx::PgConnection;
 use tokio::select;
 use tokio_util::{task::TaskTracker, sync::CancellationToken};
 use tracing::instrument;
@@ -237,7 +238,7 @@ impl Worker {
     // TODO: Refactor this function to be more readable
     async fn fetch_insert_tokens(
         &self,
-        txn: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        txn: &mut PgConnection,
         token0: H160,
         token1: H160,
     ) -> Result<(i32, i32), eyre::Error> {

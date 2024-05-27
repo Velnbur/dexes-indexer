@@ -10,8 +10,8 @@ CREATE TABLE IF NOT EXISTS tokens (
 
     address CHAR(42) NOT NULL UNIQUE,
 
-    name TEXT NOT NULL,
-    symbol TEXT NOT NULL,
+    name     TEXT NOT NULL,
+    symbol   TEXT NOT NULL,
     decimals INTEGER NOT NULL
 );
 
