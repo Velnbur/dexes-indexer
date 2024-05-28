@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Baibula"
+  given-names: "Kyrylo"
+title: "Constant Product Market Makers Routing"
+date-released: 2024-05-31
+url: "https://github.com/Velnbur/dexes-indexer"
